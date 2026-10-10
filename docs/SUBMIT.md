@@ -8,29 +8,30 @@
 
 ---
 
-## 第一步：创建公开仓库
+## 第一步：创建公开仓库 ✅ 已完成
 
-在 GitHub 新建仓库，**Repository name** 建议填 `mcd-points-sunset`，**务必选择 Public**（私有仓库不能参赛）。
+仓库已创建并推送：**<https://github.com/sunqichao/mcd-points-sunset>**
 
-创建时**不要**勾选 Add README / .gitignore / LICENSE——本地已有。
+| 项目 | 状态 |
+|---|---|
+| 可见性 | Public ✅（私有仓库不能参赛） |
+| 默认分支 | main |
+| 提交历史 | `6d14807` Initial commit → `41b7474` 作品首版 |
+| 文件数 | 20（含官方要求的全部必备文件） |
+| Topics | `mcdonalds` `mcp` `model-context-protocol` `ai-skill` 等 8 个 |
+| License | MIT |
 
-## 第二步：推送代码
+## 第二步：推送代码 ✅ 已完成
 
-把下面的 `sunqichao` 换成你的 GitHub 用户名后依次执行：
+后续若本地还有改动，在 `repo/` 目录下执行：
 
 ```bash
-cd /path/to/mcd-points-sunset
-
-git init
 git add .
-git commit -m "feat: 麦麦积分清算局 - 基于麦当劳官方 MCP 的积分清算 Skill"
-
-git branch -M main
-git remote add origin https://github.com/sunqichao/mcd-points-sunset.git
-git push -u origin main
+git commit -m "说明本次改动"
+git push
 ```
 
-推送前建议再确认一次没有凭证被带上：
+推送前建议确认一次没有凭证被带上：
 
 ```bash
 git status --porcelain | grep -i -E "\.env$|token" ; echo "无输出即安全"
