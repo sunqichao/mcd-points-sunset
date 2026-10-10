@@ -29,6 +29,9 @@ VAGUE_MARKERS = ("任选", "随机", "指定口味", "惊喜", "件套")
 
 _NUM_CN = {"一": 1, "两": 2, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6}
 
+# 简称 -> 常见完整叫法，用于消除「菜单简写」与「券/奖品全称」之间的写法差异
+_COMMON_ALIASES = {"可乐": "可口可乐"}
+
 
 def _to_float(value: Any) -> float | None:
     if value is None or isinstance(value, bool):
@@ -53,7 +56,12 @@ class MenuIndex:
     """门店菜单价格索引：单品名 -> 常规价。"""
 
     def __init__(self, singles: dict[str, float]) -> None:
-        self.singles = singles
+        self.singles = dict(singles)
+        # 券 / 奖品爱用完整品牌名，菜单爱用简称（「可口可乐」vs「可乐」）。
+        # 简称已在菜单里时补登全称，避免因写法差异把确定能算的商品判为无法估值。
+        for short, full in _COMMON_ALIASES.items():
+            if short in self.singles and full not in self.singles:
+                self.singles[full] = self.singles[short]
 
     @classmethod
     def from_meals(cls, meals_raw: Any) -> "MenuIndex":
@@ -77,6 +85,8 @@ class MenuIndex:
             for key in _name_variants(name):
                 if key not in singles or price < singles[key]:
                     singles[key] = price
+
+        return cls(singles)
         return cls(singles)
 
 
@@ -237,6 +247,39 @@ def evaluate_coupon(
     return net, round(regular, 2), f"常规价 {' + '.join(detail)} ¥{regular:.1f} − 应付 ¥{pay}"
 
 
+def bundle_regular_price(text: str, index: MenuIndex) -> tuple[float | None, str, str]:
+    """把一个名称（券名 / 奖品名）折算成原创价合计。
+
+    返回 (合计, 明细, 原因)；合计为 None 表示算不出来。
+    与 evaluate_coupon 共用同一把尺子：**只要还有认不出来的成分就整体判 None**，
+    既不捏造，也不含糊 —— 「麦香鱼三件套」不能只算麦香鱼就报出精确值。
+    """
+    for marker in VAGUE_MARKERS:
+        if marker in str(text or ""):
+            return None, "", f"内容含「{marker}」，单品不确定"
+
+    items, reason = parse_from_name(text, index)
+    if not items:
+        return None, "", reason or "所含单品在菜单中未匹配到"
+
+    left = unrecognized_remainder(text, [t for _, t in items])
+    # 规格修饰词（大杯 / 中份…）不算未知成分
+    left = re.sub(r"[大中小纯]", "", left)
+    if left:
+        return None, "", f"含未识别成分「{left}」，只算一半会低估，故不估值"
+
+    total = 0.0
+    detail: list[str] = []
+    for qty, term in items:
+        hit = index.resolve(term)
+        if hit is None:
+            return None, "", f"「{term}」在门店菜单中查无此单品"
+        price, matched = hit
+        total += price * qty
+        detail.append(f"{matched}×{qty}" if qty > 1 else matched)
+    return round(total, 2), " + ".join(detail), ""
+
+
 def parse_prize_value(
     name: str,
     index: MenuIndex | None = None,
@@ -258,23 +301,23 @@ def parse_prize_value(
     # 「大杯可口可乐3.6元优惠券」——付 X 元买某样东西，省下的是差价
     m = re.search(r"^(.*?)(\d+(?:\.\d+)?)元优惠券$", name)
     if m:
-        item, pay = m.group(1), float(m.group(2))
-        hit = index.resolve(item) if item else None
-        if hit:
-            regular, matched = hit
-            if regular > pay:
-                return round(regular - pay, 2), f"{matched} 常规价 ¥{regular} − 应付 ¥{pay}"
-        return None, "所含单品查不到常规价"
+        regular, detail, why = bundle_regular_price(m.group(1).strip(), index)
+        if regular is None:
+            return None, why
+        pay = float(m.group(2))
+        if regular <= pay:
+            return None, f"{detail} 常规价 ¥{regular} 不超过应付 ¥{pay}"
+        return round(regular - pay, 2), f"{detail} 常规价 ¥{regular} − 应付 ¥{pay}"
 
-    # 「麦辣鸡腿汉堡5折优惠券」——按折扣省下的部分
+    # 「麦辣鸡腿汉堡5折优惠券」——省下的是打折的那部分，基准仍是真实菜单价
     m = re.search(r"^(.*?)(\d+(?:\.\d+)?)折优惠券$", name)
     if m:
-        item, zhe = m.group(1), float(m.group(2))
-        hit = index.resolve(item) if item else None
-        if hit:
-            regular, matched = hit
-            return round(regular * (1 - zhe / 10), 2), f"{matched} 常规价 ¥{regular} 的 {(10 - zhe) / 10:.0%} 折扣部分"
-        return None, "所含单品查不到常规价"
+        regular, detail, why = bundle_regular_price(m.group(1).strip(), index)
+        if regular is None:
+            return None, why
+        zhe = float(m.group(2))
+        saved = round(regular * (1 - zhe / 10), 2)
+        return saved, f"{detail} 常规价 ¥{regular} 的 {(10 - zhe) / 10:.0%} 折扣部分"
 
     # 「28会员积分」——奖品就是积分，价值由本工具自己算出的 VPP 决定
     m = re.match(r"^(\d+)\s*会员积分$", name)

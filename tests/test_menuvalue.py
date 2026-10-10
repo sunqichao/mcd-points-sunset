@@ -44,7 +44,10 @@ INDEX = MenuIndex(
     }
 )
 
-check("菜单索引大小", INDEX.size == 7, str(INDEX.size))
+PRICE_INDEX = INDEX.singles  # 期望值时直接从同一份菜单取，避免两处硬编码
+
+# 7 个菜单单品 + 1 个自动补登的品牌全称（可口可乐）
+check("菜单索引大小", INDEX.size == 8, str(INDEX.size))
 
 # ---------- 券面应付价识别 ----------
 check("名称读券价", pay_price_from_name("18.8元2份麦辣鸡翅") == 18.8)
@@ -96,6 +99,39 @@ check("2份按双倍计价", regular7 == 30.0, f"{regular7}")
 # ---------- 残词识别 ----------
 check("全部认出无残词", unrecognized_remainder("巨无霸可乐组合", ["巨无霸", "可乐"]) == "")
 check("认出部分留残词", unrecognized_remainder("可乐麦炫酷", ["可乐"]) == "麦炫酷")
+
+# ---------- 抽奖奖品估价（与券同一把尺子）----------
+from menuvalue import parse_prize_value  # noqa: E402
+
+# 立减券：面额即价值，不需要任何假设
+v1, why1 = parse_prize_value("苹板支撑四件套立减8元券", INDEX)
+check("立减券按面额", v1 == 8.0, f"{v1}")
+
+# 折扣券：按真实菜单价折算「省下的那部分」，不是拍脑袋
+v2, why2 = parse_prize_value("麦辣鸡腿汉堡5折优惠券", INDEX)
+check("折扣券按菜单价", v2 == round(PRICE_INDEX["麦辣鸡腿汉堡"] * 0.5, 2), f"{v2} / {why2}")
+
+# 组合类奖品必须按完整内容核价，只算一个单品属于低估
+v3, why3 = parse_prize_value("麦辣鸡翅麦乐鸡6.8折优惠券", INDEX)
+expect3 = round((PRICE_INDEX["麦辣鸡翅"] + PRICE_INDEX["麦乐鸡"]) * 0.32, 2)
+check("组合奖品不得只算一件", v3 == expect3, f"{v3} != {expect3} / {why3}")
+
+# 「件套」内容不确定 —— 宁可不算，也不能猜
+v4, why4 = parse_prize_value("麦香鱼三件套4.5折优惠券", INDEX)
+check("件套类拒绝估值", v4 is None, f"{v4}")
+check("件套类有原因", "件套" in str(why4), str(why4))
+
+# 「双重」意味着数量不明，同样拒绝
+v5, why5 = parse_prize_value("双重麦乐鸡6.8折优惠券", INDEX)
+check("数量不明拒绝估值", v5 is None, f"{v5}")
+
+# 菜单里写简写、券里写全称时要能对齐
+v6, why6 = parse_prize_value("大杯可口可乐3.6元优惠券", INDEX)
+check("全称简称对齐", v6 == round(PRICE_INDEX["可乐"] - 3.6, 2), f"{v6} / {why6}")
+
+# 积分类奖品用本工具自己算出的单位价值折算
+v7, _ = parse_prize_value("28会员积分", INDEX, point_vpp_per_1k=50.0)
+check("积分奖品自洽折算", v7 == 1.4, f"{v7}")
 
 print("=" * 46)
 print(f"通过 {PASSED} 项，失败 {FAILED} 项")
