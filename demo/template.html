@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>麦麦积分清算局 · McPoints Sunset</title>
+<style>
+:root{
+  --red:#DA291C; --yellow:#FFC72C; --green:#1D9E75; --amber:#EF9F27;
+  --ink:#1A1A1A; --muted:#6B6B6B; --faint:#9A9A9A;
+  --line:#E6E4DF; --bg:#FAFAF8; --card:#FFFFFF; --soft:#F4F2ED;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  font-size:14px; line-height:1.6; padding:32px 20px 64px;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1080px;margin:0 auto}
+header{margin-bottom:28px;padding-bottom:20px;border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.dot{width:12px;height:12px;border-radius:50%;background:var(--red);flex:none}
+h1{font-size:22px;font-weight:600;letter-spacing:-.2px}
+.sub{color:var(--muted);font-size:13px;margin-top:6px}
+.badge{
+  display:inline-block;font-size:11px;padding:3px 9px;border-radius:20px;
+  background:var(--soft);color:var(--muted);border:1px solid var(--line);
+}
+.badge.live{background:#E1F5EE;color:#0F6E56;border-color:#9FE1CB}
+.badge.mock{background:#FAEEDA;color:#854F0B;border-color:#FAC775}
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:24px 0}
+.metric{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+.metric .k{font-size:12px;color:var(--muted)}
+.metric .v{font-size:26px;font-weight:600;margin-top:4px;letter-spacing:-.5px}
+.metric .v small{font-size:13px;font-weight:400;color:var(--faint);margin-left:3px}
+.alert{
+  display:flex;align-items:center;gap:12px;padding:14px 18px;border-radius:12px;
+  border:1px solid;margin-bottom:24px
+}
+.alert .t{font-weight:600;font-size:14px}
+.alert .d{font-size:13px;opacity:.85}
+section{margin-bottom:28px}
+h2{font-size:15px;font-weight:600;margin-bottom:4px;display:flex;align-items:center;gap:8px}
+.hint{font-size:12px;color:var(--muted);margin-bottom:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px}
+.row{display:flex;align-items:center;gap:12px;padding:7px 0}
+.row .nm{width:190px;flex:none;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.track{flex:1;height:20px;background:var(--soft);border-radius:4px;overflow:hidden}
+.fill{height:100%;border-radius:4px}
+.row .vl{width:112px;flex:none;text-align:right;font-size:13px;font-variant-numeric:tabular-nums}
+.row .vl em{font-style:normal;font-size:11px;color:var(--faint);margin-left:4px}
+.tag{font-size:10px;padding:1px 5px;border-radius:3px;margin-left:6px;vertical-align:1px}
+.tag.exact{background:#E1F5EE;color:#0F6E56}
+.tag.est{background:#FAEEDA;color:#854F0B}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.tabs{display:inline-flex;gap:4px;background:var(--soft);padding:3px;border-radius:9px;margin-bottom:14px}
+.tab{
+  padding:5px 14px;border-radius:7px;font-size:12px;cursor:pointer;color:var(--muted);
+  border:none;background:transparent;font-family:inherit
+}
+.tab.on{background:var(--card);color:var(--ink);font-weight:500;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.verdict{padding:16px 18px;border-radius:10px;background:var(--soft);border:1px solid var(--line)}
+.verdict .lead{font-size:15px;font-weight:600;margin-bottom:6px}
+.verdict .why{font-size:13px;color:var(--muted)}
+.cmp{display:flex;flex-direction:column;gap:10px;margin-top:14px}
+.cmp .item{display:flex;align-items:center;gap:10px;font-size:13px}
+.cmp .item .lb{width:96px;flex:none;color:var(--muted)}
+.cmp .item .tk{flex:1;height:16px;background:var(--soft);border-radius:3px;overflow:hidden}
+.cmp .item .fl{height:100%;border-radius:3px}
+.cmp .item .vv{width:96px;flex:none;text-align:right;font-variant-numeric:tabular-nums}
+.ref{margin-top:12px;padding-top:12px;border-top:1px dashed var(--line);font-size:12px;color:var(--muted)}
+.pitems{display:flex;flex-direction:column;gap:1px;background:var(--line);border-radius:10px;overflow:hidden;border:1px solid var(--line)}
+.pi{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:11px 16px;background:var(--card);font-size:13px}
+.pi .rn{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pi .rt{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums;flex:none}
+.pi .rv{font-weight:600;font-variant-numeric:tabular-nums;flex:none;min-width:82px;text-align:right}
+.summary{margin-top:14px;padding:14px 16px;border-radius:10px;background:#E1F5EE;border:1px solid #9FE1CB}
+.summary .st{font-size:14px;font-weight:600;color:#0F6E56}
+.summary .sd{font-size:12px;color:#0F6E56;opacity:.8;margin-top:3px}
+.pbar{height:8px;background:var(--soft);border-radius:4px;overflow:hidden;margin:10px 0 4px}
+.pbar div{height:100%;background:var(--green);border-radius:4px}
+.warnbox{margin-top:16px;padding:12px 16px;border-radius:10px;background:#FCEBEB;border:1px solid #F7C1C1;color:#791F1F;font-size:13px}
+.wlrow{display:flex;align-items:baseline;gap:12px;padding:8px 0;font-size:13px;border-bottom:1px solid var(--line)}
+.wlrow:last-child{border-bottom:none}
+.wlrow .wv{width:74px;flex:none;font-variant-numeric:tabular-nums;color:var(--muted)}
+.wlrow .wn{flex:1}
+.wlrow .wp{flex:none;font-variant-numeric:tabular-nums;color:var(--faint);font-size:12px}
+footer{margin-top:36px;padding-top:20px;border-top:1px solid var(--line);font-size:12px;color:var(--faint);line-height:1.8}
+.tools{margin-top:6px}
+.tools code{background:var(--soft);padding:2px 6px;border-radius:4px;font-size:11px;margin:0 4px 4px 0;display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+@media(max-width:860px){
+  .metrics{grid-template-columns:repeat(2,1fr)}
+  .grid2{grid-template-columns:1fr}
+  .row .nm{width:130px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <span class="dot"></span>
+      <h1>麦麦积分清算局</h1>
+      <span class="badge" id="srcBadge"></span>
+      <span class="badge live">只读预演 · 不扣积分</span>
+    </div>
+    <div class="sub">McPoints Sunset · 在积分过期之前，把每一分都花在单位价值最高的去路上</div>
+  </header>
+
+  <div id="app"></div>
+
+  <footer>
+    <div>本项目为麦当劳程序员创意开发大赛参赛作品，由参赛者独立开发，非麦当劳官方产品。</div>
+    <div id="srcNote"></div>
+    <div id="metaNote"></div>
+    <div class="tools" id="toolsNote"></div>
+    <div style="margin-top:8px">数据源自参赛者本人的麦当劳账户（已脱敏呈现），餐品、价格与供应状态以麦当劳官方渠道实时结果为准。</div>
+  </footer>
+</div>
+
+<script>
+const SOURCE = "__SOURCE__";
+const REPORTS = __REPORT_DATA__;
+const LABEL = {conservative:"保守",balanced:"均衡",aggressive:"激进"};
+const URGENCY = {
+  critical:{bg:"#FCEBEB",bd:"#F7C1C1",tx:"#791F1F"},
+  warning:{bg:"#FAEEDA",bd:"#FAC775",tx:"#854F0B"},
+  safe:{bg:"#E1F5EE",bd:"#9FE1CB",tx:"#0F6E56"},
+  unknown:{bg:"#F4F2ED",bd:"#E6E4DF",tx:"#5F5E5A"}
+};
+
+const esc = s => String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const num = n => (n==null?"—":Number(n).toLocaleString("zh-CN"));
+const grade = b => b==="cash" ? '<span class="tag exact">准</span>' : '<span class="tag est">估</span>';
+
+let active = "balanced";
+
+function switchTo(p){ active = p; draw(); }
+
+function draw(){
+  const r = REPORTS[active];
+  const acc = r.account || {};
+  const u = URGENCY[acc.urgency] || URGENCY.unknown;
+  const prods = (r.products||[]).slice(0,9);
+  const topVpp = prods.length ? Math.max(...prods.map(p=>p.vpp_per_1k)) : 1;
+  const lot = r.lottery;
+  const best = r.verdict.best_vpp_per_1k || 0;
+
+  let scale = Math.max(topVpp, lot?lot.optimistic_per_1k:0) * 1.1;
+
+  document.getElementById("srcBadge").innerHTML =
+    SOURCE==="real" ? '<span class="badge live">真实 MCP 数据</span>'
+                    : '<span class="badge mock">演示样例数据</span>';
+
+  document.getElementById("srcNote").textContent = SOURCE==="real"
+    ? "数据来自参赛者本人账户的真实 MCP 调用结果。"
+    : "当前为内置样例数据（价格与积分为演示值），用于展示算法效果；配置 MCP Token 后可一键切换到真实数据。";
+
+  let h = "";
+
+  h += '<div class="metrics">';
+  h += `<div class="metric"><div class="k">可用积分</div><div class="v">${num(acc.available)}</div></div>`;
+  h += `<div class="metric"><div class="k">即将过期</div><div class="v" style="color:var(--red)">${num(acc.expiring_soon)}</div></div>`;
+  h += `<div class="metric"><div class="k">冻结中</div><div class="v">${num(acc.frozen)}</div></div>`;
+  h += `<div class="metric"><div class="k">距到期</div><div class="v">${acc.days_left==null?"—":num(acc.days_left)}<small>天</small></div></div>`;
+  h += '</div>';
+
+  h += `<div class="alert" style="background:${u.bg};border-color:${u.bd};color:${u.tx}">
+          <div><div class="t">清算紧迫度</div><div class="d">${esc(acc.urgency_message||"")}</div></div>
+        </div>`;
+
+  h += `<section><h2>单位积分价值排行</h2>
+        <div class="hint">每千积分能换回多少元。<span class="tag exact">准</span>按官方现金价精确折算，
+        <span class="tag est">估</span>为无现金价时的同类目推算值。数值越高，这个商品越值得用积分换。</div>
+        <div class="card">`;
+  if(!prods.length){
+    h += '<div class="hint" style="margin:0">未获取到可估值的商品。</div>';
+  }
+  prods.forEach(p=>{
+    const w = Math.max(p.vpp_per_1k / scale * 100, 1.5);
+    const col = p.basis==="cash" ? "var(--red)" : "#C9C6BE";
+    h += `<div class="row">
+            <div class="nm">${esc(p.name)}${grade(p.basis)}</div>
+            <div class="track"><div class="fill" style="width:${w.toFixed(1)}%;background:${col}"></div></div>
+            <div class="vl">${p.vpp_per_1k.toFixed(2)}<em>元/千分</em></div>
+          </div>`;
+  });
+  h += '</div></section>';
+
+  h += `<section><h2>抽奖还是直接兑换？</h2>
+        <div class="hint">抽奖是不确定的收益，兑换是确定的收益。这里的取舍取决于你的风险偏好：</div>
+        <div class="tabs">`;
+  Object.keys(LABEL).forEach(k=>{
+    h += `<button class="tab ${k===active?"on":""}" onclick="switchTo('${k}')">${LABEL[k]}</button>`;
+  });
+  h += '</div><div class="grid2">';
+
+  h += '<div class="card">';
+  if(lot){
+    const rows = [
+      ["悲观情况", lot.pessimistic_per_1k, "#C9C6BE"],
+      ["加权期望", lot.ev_per_1k, "var(--green)"],
+      ["乐观情况", lot.optimistic_per_1k, "var(--amber)"]
+    ];
+    h += '<div class="cmp">';
+    rows.forEach(([lb,v,c])=>{
+      h += `<div class="item"><div class="lb">${lb}</div>
+              <div class="tk"><div class="fl" style="width:${Math.max(v/scale*100,1).toFixed(1)}%;background:${c}"></div></div>
+              <div class="vv">${v.toFixed(2)}</div></div>`;
+    });
+    h += '</div>';
+    h += `<div class="ref">单次消耗 <b>${num(lot.cost_points)}</b> 积分，奖品池 <b>${lot.prize_count}</b> 档${lot.uncertainty>=0.6?"，官方未披露概率，按库存占比推断":"，概率来自官方披露"}。</div>`;
+  } else {
+    h += '<div class="hint" style="margin:0">当前未检测到可评估的抽奖活动。</div>';
+  }
+  h += '</div>';
+
+  h += `<div class="card"><div class="verdict">
+          <div class="lead" style="color:${r.verdict.recommend_exchange?"#0F6E56":"#854F0B"}">
+            ${r.verdict.recommend_exchange ? "建议直接兑换" : "可以试试抽奖"}
+          </div>
+          <div class="why">${esc(r.verdict.lottery_verdict)}</div>
+          <div class="why" style="margin-top:6px">${esc(r.verdict.reason)}</div>
+        </div>
+        <div class="ref">确定兑换的基准线：<b>${best.toFixed(2)}</b> 元/千分${
+          r.verdict.best_product?`（当前最优为「${esc(r.verdict.best_product)}」）`:""}。</div>
+        </div>`;
+  h += '</div></section>';
+
+  const plan = r.plan || {};
+  h += `<section><h2>推荐兑换组合</h2>
+        <div class="hint">在 <b>${num(plan.budget)}</b> 分清算预算内，用 0/1 背包求出的最优方案。
+        ${r.meta.include_estimated?"已包含估算价值的商品。":"仅使用有官方现金价的商品，避免用推算数字替你做决定。"}</div>
+        <div class="pitems">`;
+  if(!plan.items || !plan.items.length){
+    h += '<div class="pi"><span class="rn">预算内暂无可兑换的高价值商品</span></div>';
+  }
+  (plan.items||[]).forEach(i=>{
+    h += `<div class="pi">
+            <span class="rn">${esc(i.name)}</span>
+            <span class="rt">${num(i.points)} 分</span>
+            <span class="rv">约 ¥${i.value.toFixed(2)}</span>
+          </div>`;
+  });
+  h += '</div>';
+  if(plan.items && plan.items.length){
+    const util = Math.round((plan.utilization||0)*100);
+    h += `<div class="summary">
+            <div class="st">合计 ${num(plan.total_points)} / ${num(plan.budget)} 分 · 回收约 ¥${(plan.total_value||0).toFixed(2)}</div>
+            <div class="pbar"><div style="width:${util}%"></div></div>
+            <div class="sd">预算利用率 ${util}%${plan.leftover?`，剩余 ${num(plan.leftover)} 分暂无高价值去路，可保留或等待新商品上架`:""}</div>
+          </div>`;
+  }
+  h += '</section>';
+
+  const wl = r.watchlist || [];
+  if(wl.length){
+    h += `<section><h2>待定清单</h2>
+          <div class="hint">这些商品没有官方现金价，左侧数值是同类目推算的结果，可信度较低，交给你自己判断。</div>
+          <div class="card">`;
+    wl.slice(0,8).forEach(w=>{
+      h += `<div class="wlrow">
+              <span class="wv">≈${w.vpp_per_1k.toFixed(2)}</span>
+              <span class="wn">${esc(w.name)} <span style="color:var(--faint);font-size:12px">${esc(w.category||"")}</span></span>
+              <span class="wp">${num(w.points)} 分</span>
+            </div>`;
+    });
+    h += '</div></section>';
+  }
+
+  if(r.warnings && r.warnings.length){
+    h += '<section><div class="warnbox"><b>解析告警</b><br>' +
+         r.warnings.map(esc).join("<br>") + '</div></section>';
+  }
+
+  document.getElementById("app").innerHTML = h;
+
+  document.getElementById("metaNote").textContent =
+    "报告生成于 " + (r.meta.generated_at||"—") + " · 清算预算：" +
+    num(plan.budget) + " 分 · 风险偏好：" + LABEL[active];
+
+  document.getElementById("toolsNote").innerHTML =
+    "调用的 MCP 工具：" + (r.meta.tools_used||[]).map(t=>`<code>${esc(t)}</code>`).join("");
+}
+
+draw();
+</script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+# 安全：绝不允许真实凭证进版本库
+.env
+.env.*
+!.env.example
+
+# MCP Token / 本地运行产物
+*.token
+.mcp-token
+secrets.json
+mcp-config.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# 运行产物（真实调用结果可能含个人信息，禁止入库）
+output/
+result/
+*.log
+runtime-response-*.json
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
