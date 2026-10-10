@@ -36,7 +36,15 @@ DEFAULT_PROFILE = "balanced"
 
 @dataclass(frozen=True)
 class Product:
-    """麦麦商城商品。points_price 为积分兑换价，cash_price 为纯现金购买价。"""
+    """麦麦商城商品。
+
+    points_price  积分兑换价。
+    cash_price    本次兑换真正到手的**净价值**（元），VPP 只用它做精确折算。
+                  对「凭券享 X 元购买」类商品，净价值 = 常规菜单价合计 − 还需支付的 X 元，
+                  而不是券面那个 X —— 推导见 README「为什么不能用券面价」。
+    pay_cny       兑换后仍需支付的现金（官方 extTradePrice 字段）。
+    regular_cny   券内所含单品的常规菜单价合计。
+    """
 
     product_id: str
     name: str
@@ -44,6 +52,8 @@ class Product:
     cash_price: float | None = None
     category: str = "其他"
     stock: int = 0
+    pay_cny: float | None = None
+    regular_cny: float | None = None
 
     @property
     def max_buy(self) -> int:

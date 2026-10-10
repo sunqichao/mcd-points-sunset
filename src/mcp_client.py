@@ -152,10 +152,34 @@ class McpClient:
         result = self._rpc("tools/list")
         return list(result.get("tools", []))
 
+    @staticmethod
+    def _unwrap_markdown(text: str) -> Any:
+        """从工具返回的 Markdown 文本中抠出原始 JSON。
+
+        线上实际行为：tools/call 返回的 content 是一段面向 LLM 的说明文本
+        （"# API Response Information" ... "## Original Response"），
+        真正的业务 JSON 嵌在这段文本里，因此这里只抓 JSON、丢弃说明部分。
+        """
+        dec = json.JSONDecoder()
+        marker = text.find("## Original Response")
+        idx = marker + len("## Original Response") if marker >= 0 else 0
+        while True:
+            start = text.find("{", idx)
+            if start < 0:
+                return None
+            try:
+                obj, _ = dec.raw_decode(text[start:])
+            except ValueError:
+                idx = start + 1
+                continue
+            if isinstance(obj, dict) and any(k in obj for k in ("success", "code", "data")):
+                return obj
+            idx = start + 1
+
     def call_tool(self, name: str, arguments: dict[str, Any] | None = None) -> Any:
         """调用指定工具，返回结构化结果。
 
-        兼容 content: [{type:'text', text:'...'}] 形态，若 text 是 JSON 则自动解析。
+        优先剥离 Markdown 外壳取原始业务 JSON；若不是合法 JSON 则原样返回文本。
         """
         result = self._rpc("tools/call", {"name": name, "arguments": arguments or {}})
         if result is None:
@@ -168,6 +192,9 @@ class McpClient:
                     texts.append(item.get("text", ""))
             joined = "\n".join(texts).strip()
             if joined:
+                unwrapped = self._unwrap_markdown(joined)
+                if unwrapped is not None:
+                    return unwrapped
                 try:
                     return json.loads(joined)
                 except json.JSONDecodeError:

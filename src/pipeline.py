@@ -17,6 +17,7 @@ import json
 import os
 import sys
 from datetime import datetime
+from typing import Any
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
@@ -63,7 +64,23 @@ from liquidator import (  # noqa: E402
 )
 from sample_data import MOCK_ACCOUNT, MOCK_LOTTERY, MOCK_PRODUCTS  # noqa: E402
 
-READ_ONLY_TOOLS = ("query-my-account", "mall-points-products", "query-lottery-info", "now-time-info")
+
+def _to_float(value: Any) -> float | None:
+    try:
+        return float(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+READ_ONLY_TOOLS = (
+    "query-my-account",       # 积分账户
+    "mall-points-products",   # 商城可兑换商品
+    "mall-product-detail",    # 商品 sku 价格与官方说明
+    "query-lottery-info",     # 抽奖活动与奖品池
+    "now-time-info",          # 服务端时间
+    "query-nearby-stores",    # 取菜单价用的门店
+    "query-meals",            # 门店真实菜单价
+)
 WRITE_TOOLS = ("mall-create-order", "draw-lottery")
 
 
@@ -85,6 +102,113 @@ def fetch_from_mcp() -> tuple[dict, dict, dict, dict]:
     )
 
 
+def collect_real_data(city: str = "上海", keyword: str = "麦当劳") -> tuple[tuple, list, dict, list]:
+    """真实模式：拿到商城商品 + 门店菜单价，算出每张券的净价值。
+
+    与 fetch_from_mcp 的区别：
+    - 商城商品按 catRuleIds 区分「商品券 / 实物」两类拉取，避免把派对活动（point=0）混进来
+    - 逐个取商品详情拿到 extTradePrice 与官方说明
+    - 拉一家门店的真实菜单做比价基准
+    - 用 menuvalue 把「券面价」纠偏成真正的到手价值
+    """
+    from liquidator import Product
+    from mcp_client import connect
+    from menuvalue import (
+        MenuIndex,
+        estimate_prize_pool,
+        evaluate_coupon,
+        pay_price_from_name,
+        pick_store,
+    )
+
+    client = connect()
+    raw_products: list[dict] = []
+    for cat in ("1>4", "2"):
+        got = client.call_tool("mall-points-products", {"catRuleIds": cat}) or {}
+        rows = (got.get("data") if isinstance(got, dict) else None) or []
+        raw_products.extend(r for r in rows if isinstance(r, dict))
+
+    store_code, store_name = pick_store(client, city, keyword)
+    menu_raw = client.call_tool(
+        "query-meals", {"storeCode": store_code, "orderType": 1, "beType": 1}
+    )
+    index = MenuIndex.from_meals(menu_raw)
+
+    products: list[Product] = []
+    seen_ids: set[str] = set()
+    unresolved = 0
+    for row in raw_products:
+        spu = row.get("spuId")
+        points = int(float(str(row.get("point") or 0)) or 0)
+        if points <= 0 or spu in seen_ids:
+            continue
+        seen_ids.add(spu)
+
+        note = ""
+        pay = None
+        detail = client.call_tool("mall-product-detail", {"spuId": spu}) or {}
+        skus = ((detail.get("data") if isinstance(detail, dict) else None) or {}).get("skuList") or []
+        if skus and isinstance(skus[0], dict):
+            pay = skus[0].get("extTradePrice")
+            if pay in (None, "", "0", 0):
+                pay = None
+        note = str(((detail.get("data") if isinstance(detail, dict) else None) or {}).get("note") or "")
+
+        net, regular, why = evaluate_coupon(row.get("spuName"), pay, note, index)
+        if net is None:
+            unresolved += 1
+        products.append(
+            Product(
+                product_id=str(spu),
+                name=str(row.get("spuName") or "").strip(),
+                points_price=points,
+                cash_price=net,
+                category=str(row.get("catName") or "其他"),
+                stock=0,
+                pay_cny=_to_float(pay) if pay is not None else pay_price_from_name(row.get("spuName")),
+                regular_cny=regular,
+            )
+        )
+
+    # 官方抽奖接口不公布概率，这里在等概率假设下给奖品池估价；
+    # 单位积分价值取「已精确估价的商城商品」的中位数，避免被极值带偏。
+    exact_products = [p for p in products if p.cash_price and p.points_price > 0]
+    if exact_products:
+        vpps = sorted(p.cash_price / p.points_price * 1000 for p in exact_products)
+        point_vpp = vpps[len(vpps) // 2]
+    else:
+        point_vpp = None
+    prizes, prize_details = estimate_prize_pool(
+        ((client.call_tool("query-lottery-info") or {}).get("data") or {}).get("prizes") or [],
+        index,
+        point_vpp,
+    )
+
+    lottery_raw = client.call_tool("query-lottery-info") or {}
+    menu_meta = {
+        "store_code": store_code,
+        "store_name": store_name,
+        "menu_items": index.size,
+        "product_count": len(products),
+        "unresolved": unresolved,
+        "point_vpp_per_1k": round(point_vpp, 2) if point_vpp else None,
+        "prize_total": len(prize_details),
+        "prize_valued": len(prizes),
+        "equal_odds_assumption": True,
+    }
+    return (
+        (
+            client.call_tool("query-my-account"),
+            {},  # 商品已在此处装配完毕，不需要再走容错提取
+            lottery_raw,
+            client.call_tool("now-time-info"),
+        ),
+        products,
+        menu_meta,
+        prizes,
+    )
+
+
 def build_report(
     account_raw: dict,
     products_raw: dict,
@@ -94,13 +218,22 @@ def build_report(
     profile: str = DEFAULT_PROFILE,
     budget_override: int | None = None,
     include_estimated: bool = False,
+    prebuilt_products: list | None = None,
+    menu_meta: dict | None = None,
+    prebuilt_prizes: list | None = None,
 ) -> dict:
     """纯函数式地组装清算报告，便于离线测试与 Demo 复用。"""
     warnings: list[str] = []
 
-    products = extract_products(products_raw, warnings)
+    products = prebuilt_products if prebuilt_products is not None else extract_products(products_raw, warnings)
     account = extract_account(account_raw, warnings)
-    prizes, cost = extract_lottery(lottery_raw, warnings)
+    prizes, cost = (prebuilt_prizes or [], None) if prebuilt_prizes is not None else (None, None)
+    if prebuilt_prizes is None:
+        prizes, cost = extract_lottery(lottery_raw, warnings)
+
+    # 消耗积分来自活动字段 drawPoint，容错过去看|cost_points 等常见写法
+    if cost is None:
+        cost = _extract_draw_cost(lottery_raw)
     expire_date = extract_expire_date(time_raw) or extract_expire_date(account_raw)
 
     # 清算预算：优先用「即将过期积分」，没有则退回到可用积分
@@ -111,6 +244,18 @@ def build_report(
 
     lottery = assess_lottery(prizes, cost) if (prizes and cost) else None
     verdict: Verdict = decide(valued, lottery, profile)
+
+    # 官方抽奖接口只返回奖品名单，不公布任何概率。
+    # 此时「期望值」依赖等概率假设，而真实奖池通常把低价券放在高概率档，
+    # 该假设几乎必然偏乐观。信息不足时不替用户冒险——默认回到确定收益的兑换。
+    if menu_meta and menu_meta.get("equal_odds_assumption") and lottery:
+        verdict.recommend_exchange = True
+        verdict.lottery_verdict = "抽奖：概率未公开，结论仅供参考"
+        verdict.reason = (
+            f"官方抽奖接口不公布各奖概率，上式期望值是在「等概率」假设下算出的"
+            f"（{lottery.ev_per_1k:.1f} 元/千分），该假设大概率高估。"
+            f"因此本项目不据此推荐抽奖，默认选择收益确定的兑换。"
+        )
     plan: Plan = optimize_plan(budget, valued, include_estimated=include_estimated)
 
     days_left = _days_until(expire_date)
@@ -130,6 +275,8 @@ def build_report(
             "include_estimated": include_estimated,
             "budget_mode": "override" if budget_override else ("expiring" if account.expiring_soon else "available"),
             "tools_used": list(READ_ONLY_TOOLS),
+            "real_data": bool(prebuilt_products),
+            "menu": menu_meta or {},
         },
         "account": {
             "available": account.available,
@@ -147,6 +294,8 @@ def build_report(
                 "name": vp.product.name,
                 "points": vp.product.points_price,
                 "cash": vp.product.cash_price,
+                "regular": vp.product.regular_cny,
+                "pay": vp.product.pay_cny,
                 "category": vp.product.category,
                 "stock": vp.product.stock,
                 "vpp_per_1k": vp.vpp_per_1k,
@@ -206,6 +355,23 @@ def build_report(
     }
 
 
+def _extract_draw_cost(lottery_raw: Any) -> int | None:
+    """抽奖单次消耗积分——官方字段叫 drawPoint。"""
+    data = (lottery_raw or {}).get("data")
+    node = data if isinstance(data, dict) else lottery_raw
+    if not isinstance(node, dict):
+        return None
+    for key in ("drawPoint", "draw_point", "costPoint", "perDraw"):
+        raw = node.get(key)
+        try:
+            value = int(float(str(raw)))
+        except (TypeError, ValueError):
+            continue
+        if value > 0:
+            return value
+    return None
+
+
 def _days_until(date_str: str | None) -> int | None:
     if not date_str:
         return None
@@ -241,7 +407,14 @@ def render_text(report: dict) -> str:
     for p in report["products"][:8]:
         flag = "准" if p["basis"] == "cash" else "估"
         lines.append(f"  {p['vpp_per_1k']:>7.2f}  [{flag}]  {p['name']:<16} {p['points']:>6} 分")
-    lines.append("  注：[准]=按官方现金价精确折算  [估]=同类目估算")
+        if p.get("regular") is not None and p.get("pay") is not None:
+            lines.append(f"                     └ 常规价 ¥{p['regular']} − 应付 ¥{p['pay']}")
+    lines.append("  注：[准]=按真实菜单价折算到手净价值  [估]=同类目估算")
+
+    menu = report["meta"].get("menu") or {}
+    if menu:
+        lines.append(f"  比价基准：{menu.get('store_name')} · 菜单 {menu.get('menu_items')} 项"
+                     f" · 无法定级的商品 {menu.get('unresolved')} 件（已排除，未臆造数值）")
 
     lot = report["lottery"]
     if lot:
@@ -293,6 +466,10 @@ def main() -> int:
     parser.add_argument("--budget", type=int, default=None, help="覆盖清算预算（积分）")
     parser.add_argument("--include-estimated", action="store_true",
                         help="允许估算价值的商品参与背包择优（默认只使用有官方现金价的商品）")
+    parser.add_argument("--city", default=os.environ.get("MCD_CITY", "上海"),
+                        help="取菜单价所用城市（默认：上海）")
+    parser.add_argument("--keyword", default=os.environ.get("MCD_KEYWORD", "麦当劳"),
+                        help="门店搜索关键词（默认：麦当劳）")
     parser.add_argument("--json", default=None, help="将报告写入指定 JSON 文件")
     parser.add_argument("--execute", action="store_true", help="允许执行写操作（下单/抽奖）")
     parser.add_argument("--i-know-this-costs-points", action="store_true",
@@ -307,11 +484,14 @@ def main() -> int:
         print("写操作尚未在本版本中开放，当前版本仅做只读清算与预演。")
         return 2
 
+    prebuilt = None
+    menu_meta = None
+    prebuilt_prizes = None
     try:
         if args.mock:
             raw = (MOCK_ACCOUNT, MOCK_PRODUCTS, MOCK_LOTTERY, {})
         else:
-            raw = fetch_from_mcp()
+            raw, prebuilt, menu_meta, prebuilt_prizes = collect_real_data(args.city, args.keyword)
     except Exception as exc:  # noqa: BLE001
         print(f"数据获取失败：{exc}")
         print("提示：若尚未申请 MCP Token，可先运行 --mock 查看效果。")
@@ -322,6 +502,9 @@ def main() -> int:
         profile=args.profile,
         budget_override=args.budget,
         include_estimated=args.include_estimated,
+        prebuilt_products=prebuilt,
+        menu_meta=menu_meta,
+        prebuilt_prizes=prebuilt_prizes,
     )
     print(render_text(report))
 

@@ -59,16 +59,19 @@ git status --porcelain | grep -i -E "\.env$|token" ; echo "无输出即安全"
 项目地址：https://github.com/sunqichao/mcd-points-sunset
 项目简介：在积分过期之前，把每一分都花在单位价值最高的去路上。
 
-基于麦当劳中国官方 MCP 的 AI Skill，把「麦麦商城兑换」和「积分抽奖」两条去向折算到统一的度量「元 / 千积分」上比较，并给出到期预警与最优兑换组合。
+基于麦当劳中国官方 MCP 的 AI Skill，已完成真实联调，单次清算调用 7 个只读工具。
 
-核心做三件事：
-1）估值——有官方现金价的商品按「现金价 ÷ 积分价」精确折算；没有现金价的按同类目中位数估算，并明确标注【准】/【估】，不假装算得准。
-2）决策——抽奖是不确定收益，不只比期望值，而是按「不确定度惩罚 + 溢价要求」做风险调整后再下结论。实测常见奖品池下抽奖期望约 6.62 元/千积分，显著低于直接兑换的 11.05 元/千积分。
-3）择优——把「这笔积分怎么花完最值」建模为背包问题用 DP 求解，而非按单价贪心，实测预算利用率可达 99%。估算价值的商品默认不参与择优，另列待定清单交用户判断。
+关键在于两个只有真接才会踩到的坑。
 
-真实调用 4 个 MCP 只读工具：query-my-account、mall-points-products、query-lottery-info、now-time-info。默认只读，绝不自动扣除任何积分；draw-lottery 与 mall-create-order 需用户明确指令并二次确认才会触发。
+坑一：商城里大量商品是「凭券享 X 元购买」券，官方说明写「凭本券可享受3.9元购买圆筒冰淇淋」，兑换后仍要付钱，用券面价当价值会虚高三成。本项目改按「券内单品常规菜单价合计 − 凭券应付现金」折算，菜单价取自 query-meals 的真实门店报价，逐单品核价而非估算。
 
-Python 3.9+ 零第三方依赖，无需 pip install。未申请 Token 也可用 --mock 跑通完整链路，含 28 项算法断言与零外部依赖的可视化看板 demo/index.html。
+坑二：query-lottery-info 返回 27 项奖品却不公布任何中签概率。本项目按奖品名称规则逐项折价，在等概率假设下给出参考期望值，同时明确标注该假设大概率高估——概率未知时不替用户拍板，直接退回收益确定的兑换。
+
+择优用 0-1 背包 DP 而非单价贪心，真实运行预算利用率 97%。无法核定价值的商品一律排除并给出原因，不拿估算数字假装精确。
+
+Python 3.9+ 零第三方依赖，含 47 项离线断言，默认只读。
+
+真实调用 7 个只读工具：query-my-account、mall-points-products、mall-product-detail、query-lottery-info、now-time-info、query-nearby-stores、query-meals。绝不自动扣除积分；draw-lottery 与 mall-create-order 需用户明确指令并二次确认才会触发。
 
 本项目使用 WorkBuddy 开发，已提交 workbuddy.md。
 ```

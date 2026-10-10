@@ -35,15 +35,23 @@ def load_reports(args: argparse.Namespace) -> dict:
         return single
 
     if args.real:
-        from pipeline import fetch_from_mcp
+        from pipeline import collect_real_data
 
-        raw = fetch_from_mcp()
+        raw, prebuilt, menu_meta, prebuilt_prizes = collect_real_data(args.city, args.keyword)
     else:
         raw = (MOCK_ACCOUNT, MOCK_PRODUCTS, MOCK_LOTTERY, {})
+        prebuilt = menu_meta = prebuilt_prizes = None
 
     reports = {}
     for profile in PROFILES:
-        reports[profile] = build_report(*raw, profile=profile, budget_override=args.budget)
+        reports[profile] = build_report(
+            *raw,
+            profile=profile,
+            budget_override=args.budget,
+            prebuilt_products=prebuilt,
+            menu_meta=menu_meta,
+            prebuilt_prizes=prebuilt_prizes,
+        )
     return reports
 
 
@@ -52,6 +60,8 @@ def main() -> int:
     parser.add_argument("--real", action="store_true", help="真实调用麦当劳 MCP")
     parser.add_argument("--report", default=None, help="从指定 report.json 生成")
     parser.add_argument("--budget", type=int, default=None)
+    parser.add_argument("--city", default="上海", help="取菜单价的城市")
+    parser.add_argument("--keyword", default="麦当劳", help="门店搜索关键词")
     parser.add_argument("--out", default=OUTPUT_PATH)
     args = parser.parse_args()
 
